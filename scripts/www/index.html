@@ -1,11 +1,868 @@
 <!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>PakePlus</title>
-    </head>
-    <body>
-        PakePlus
-    </body>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>黄金投资利润计算器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#D4AF37', // 黄金主色
+                        secondary: '#854D0E', // 金色辅助色
+                        danger: '#DC2626', // 长期止损/亏损红色
+                        success: '#16A34A', // 长期止盈/盈利绿色
+                        day: '#F59E0B',    // 日内点位专属黄色（短线核心）
+                        neutral: '#1F2937', // 深色文字
+                        info: '#2563EB',   // 实盘数据/波动幅度
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .card-shadow {
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+            .input-focus {
+                @apply focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none;
+            }
+            .table-hover {
+                @apply hover:bg-gray-50 transition-colors;
+            }
+            .long-point { /* 长期点位样式 */
+                @apply font-bold border-2 border-danger bg-danger/5;
+            }
+            .day-point { /* 日内点位样式（短线核心） */
+                @apply font-bold border-2 border-day bg-day/5;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- 页面标题+实盘提示 -->
+        <header class="text-center mb-10">
+            <h1 class="text-[clamp(1.8rem,4vw,2.5rem)] font-bold text-neutral flex items-center justify-center gap-2">
+                <i class="fa fa-line-chart text-primary"></i> 黄金日内实盘盈亏计算器
+            </h1>
+            <p class="text-gray-600 mt-2">当天买当天卖 | 实盘极值测算 | 自定义目标挂单</p>
+            <div class="mt-3 flex flex-wrap justify-center gap-2 text-sm py-2 px-4 bg-info/5 rounded-lg border border-info/20">
+                <span class="text-info font-medium flex items-center"><i class="fa fa-bar-chart mr-1"></i> 实盘极值：当日最高/最低价测算实际盈亏</span>
+                <span class="text-neutral/70 font-medium flex items-center"><i class="fa fa-crosshairs mr-1"></i> 自定义目标：手动挂单止盈/止损价测算</span>
+            </div>
+            <p class="text-xs text-day mt-1 font-medium">💡 日内短线：主止盈1% | 激进止盈1.5% | 止损0.5% | 长期参考：止盈8% | 止损5%</p>
+            <p class="text-xs text-gray-500 mt-2">💡 计入银行双向手续费，结果贴合实盘交易</p>
+        </header>
+
+        <!-- 当前价格更新 -->
+        <div class="bg-white rounded-lg p-6 sm:p-8 card-shadow mb-8">
+            <h2 class="text-xl font-semibold text-neutral mb-6 pb-2 border-b border-gray-200">当前黄金价格</h2>
+            <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div class="flex-1 text-center">
+                    <p class="text-sm text-gray-600 mb-1">当前参考价格</p>
+                    <p id="current-price" class="text-3xl font-bold text-primary">420.00 元/克</p>
+                    <p id="update-time" class="text-sm text-gray-500 mt-1">更新时间：加载中</p>
+                </div>
+                <div class="flex flex-col gap-4">
+                    <!-- 手动更新价格功能 -->
+                    <div class="w-full md:w-64">
+                        <label for="manual-price" class="block text-sm font-medium text-gray-700 mb-2">
+                            手动更新价格（元/克）
+                        </label>
+                        <div class="flex gap-2">
+                            <input 
+                                type="number" 
+                                id="manual-price" 
+                                step="0.01" 
+                                placeholder="请输入最新价格" 
+                                class="flex-1 px-4 py-2 border border-gray-300 rounded-lg input-focus"
+                            >
+                            <button 
+                                onclick="updateManualPrice()" 
+                                class="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors"
+                            >
+                                更新
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 输入表单卡片 -->
+        <div class="bg-white rounded-lg p-6 sm:p-8 card-shadow mb-8">
+            <h2 class="text-xl font-semibold text-neutral mb-6 pb-2 border-b border-gray-200">日内交易核心信息</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- 基础建仓信息（必填） -->
+                <div class="space-y-2">
+                    <label for="buy-price" class="block text-sm font-medium text-gray-700">
+                        建仓金价（元/克）<span class="text-danger">*</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="buy-price" 
+                        step="0.01" 
+                        placeholder="请输入建仓价格" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus"
+                    >
+                </div>
+                <div class="space-y-2">
+                    <label for="invest-amount" class="block text-sm font-medium text-gray-700">
+                        建仓总金额（元）<span class="text-danger">*</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="invest-amount" 
+                        step="1" 
+                        placeholder="请输入建仓金额" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus"
+                    >
+                </div>
+                <div class="space-y-2 lg:col-span-3">
+                    <label for="trading-fee" class="block text-sm font-medium text-gray-700">
+                        单边手续费比例（%）<span class="text-gray-500 text-xs">（主流银行0.5%，双向收取自动计算）</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="trading-fee" 
+                        step="0.01" 
+                        value="0.5" 
+                        placeholder="请输入手续费率" 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg input-focus"
+                    >
+                </div>
+
+                <!-- 当日实盘极值（选填，填写则测算实盘盈亏） -->
+                <div class="space-y-2 sm:col-span-2 lg:col-span-1">
+                    <label for="day-high-price" class="block text-sm font-medium text-info">
+                        当日最高金价（元/克）<span class="text-gray-500 text-xs">（选填）</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="day-high-price" 
+                        step="0.01" 
+                        placeholder="例：487.50" 
+                        class="w-full px-4 py-2 border border-info/30 rounded-lg input-focus"
+                    >
+                </div>
+                <div class="space-y-2 sm:col-span-2 lg:col-span-1">
+                    <label for="day-low-price" class="block text-sm font-medium text-info">
+                        当日最低金价（元/克）<span class="text-gray-500 text-xs">（选填）</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="day-low-price" 
+                        step="0.01" 
+                        placeholder="例：483.80" 
+                        class="w-full px-4 py-2 border border-info/30 rounded-lg input-focus"
+                    >
+                </div>
+
+                <!-- 自定义挂单目标（选填，填写则测算目标盈亏） -->
+                <div class="space-y-2 sm:col-span-2 lg:col-span-1">
+                    <label for="target-profit-price" class="block text-sm font-medium text-success">
+                        自定义止盈金价（元/克）<span class="text-gray-500 text-xs">（选填）</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="target-profit-price" 
+                        step="0.01" 
+                        placeholder="例：486.50" 
+                        class="w-full px-4 py-2 border border-success/30 rounded-lg input-focus"
+                    >
+                </div>
+                <div class="space-y-2 sm:col-span-2 lg:col-span-1">
+                    <label for="target-loss-price" class="block text-sm font-medium text-danger">
+                        自定义止损金价（元/克）<span class="text-gray-500 text-xs">（选填）</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="target-loss-price" 
+                        step="0.01" 
+                        placeholder="例：484.50" 
+                        class="w-full px-4 py-2 border border-danger/30 rounded-lg input-focus"
+                    >
+                </div>
+            </div>
+
+            <!-- 基础建仓结果 -->
+            <div id="baseResultCard" class="mt-8">
+                <div class="border-t border-gray-200 pt-6">
+                    <h3 class="text-lg font-semibold text-neutral mb-4">日内建仓基础数据</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-gray-50 rounded-lg p-4 text-center">
+                            <p class="text-sm text-gray-600 mb-1">实际可购克数</p>
+                            <p id="gold-weight" class="text-2xl font-bold text-primary">0.000 克</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4 text-center">
+                            <p class="text-sm text-gray-600 mb-1">建仓手续费</p>
+                            <p id="trading-fee-amount" class="text-2xl font-bold text-secondary">¥ 0.00</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4 text-center">
+                            <p class="text-sm text-gray-600 mb-1">持仓成本价（含建仓费）</p>
+                            <p id="cost-price" class="text-2xl font-bold text-neutral">¥ 0.00 /克</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4 text-center">
+                            <p class="text-sm text-gray-600 mb-1">盈亏平衡点金价</p>
+                            <p id="break-even-price" class="text-2xl font-bold text-info">¥ 0.00 /克</p>
+                        </div>
+                    </div>
+                    
+                    <!-- 原有的计算结果 -->
+                    <div class="mt-6">
+                        <h3 class="text-lg font-semibold text-neutral mb-4">当前市场价值</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-center">
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <p class="text-sm text-gray-600 mb-1">当前价值</p>
+                                <p id="current-value" class="text-2xl font-bold text-secondary">¥ 0.00</p>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <p class="text-sm text-gray-600 mb-1">投资收益</p>
+                                <p id="profit" class="text-2xl font-bold">¥ 0.00</p>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <p class="text-sm text-gray-600 mb-1">收益率</p>
+                                <p id="profit-rate" class="text-xl font-bold">0.00%</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 当日实盘极值盈亏测算（填写最高/最低价则显示） -->
+        <div id="realDataCard" class="bg-white rounded-lg p-6 sm:p-8 card-shadow mb-8">
+            <h2 class="text-xl font-semibold text-info mb-6 pb-2 border-b border-info/20 flex items-center">
+                <i class="fa fa-bar-chart mr-2"></i> 当日实盘极值盈亏测算
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-gray-50 rounded-lg p-4 text-center">
+                    <p class="text-sm text-gray-600 mb-1">日内实际波动幅度</p>
+                    <p id="day-volatility" class="text-2xl font-bold text-info">0.00%</p>
+                </div>
+                <div class="bg-success/5 rounded-lg p-4 text-center border border-success/20">
+                    <p class="text-sm text-success mb-1">当日最大可盈利</p>
+                    <p id="max-profit" class="text-2xl font-bold text-success">¥ 0.00 (+0.00%)</p>
+                </div>
+                <div class="bg-danger/5 rounded-lg p-4 text-center border border-danger/20">
+                    <p class="text-sm text-danger mb-1">当日最大可亏损</p>
+                    <p id="max-loss" class="text-2xl font-bold text-danger">¥ 0.00 (-0.00%)</p>
+                </div>
+            </div>
+            <div class="text-xs text-gray-500 text-center">
+                💡 最大盈利=建仓价买→当日最高价卖；最大亏损=建仓价买→当日最低价卖（均计入卖出手续费）
+            </div>
+        </div>
+
+        <!-- 盈利清单卡片 -->
+        <div class="bg-white rounded-lg p-6 sm:p-8 card-shadow mb-8">
+            <h2 class="text-xl font-semibold text-neutral mb-6 pb-2 border-b border-gray-200 flex items-center justify-between">
+                <span><i class="fa fa-arrow-up text-success mr-2"></i> 盈利清单（涨价幅度）</span>
+                <span class="text-sm flex flex-col md:flex-row gap-2">
+                    <span class="text-day font-medium">📌 日内主止盈【+1%】</span>
+                    <span class="text-day font-medium">📌 日内激进止盈【+1.5%】</span>
+                    <span class="text-success font-medium">📌 长期止盈【+8%】</span>
+                </span>
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left min-w-[600px]">
+                    <thead class="bg-gray-50 text-gray-700">
+                        <tr>
+                            <th class="px-3 py-2 rounded-l-lg whitespace-nowrap">涨幅</th>
+                            <th class="px-3 py-2 whitespace-nowrap">卖出价格</th>
+                            <th class="px-3 py-2 whitespace-nowrap hidden sm:table-cell">总价值</th>
+                            <th class="px-3 py-2 whitespace-nowrap">盈利</th>
+                            <th class="px-3 py-2 rounded-r-lg whitespace-nowrap">收益率</th>
+                        </tr>
+                    </thead>
+                    <tbody id="profit-table" class="divide-y divide-gray-200">
+                        <!-- 盈利数据通过JS动态生成 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 亏损清单卡片 -->
+        <div class="bg-white rounded-lg p-6 sm:p-8 card-shadow mb-8">
+            <h2 class="text-xl font-semibold text-neutral mb-6 pb-2 border-b border-gray-200 flex items-center justify-between">
+                <span><i class="fa fa-arrow-down text-danger mr-2"></i> 亏损清单（跌价幅度）</span>
+                <span class="text-sm flex flex-col md:flex-row gap-2">
+                    <span class="text-day font-medium">📌 日内止损【-0.5%】</span>
+                    <span class="text-danger font-medium">📌 长期止损【-5%】</span>
+                </span>
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left min-w-[600px]">
+                    <thead class="bg-gray-50 text-gray-700">
+                        <tr>
+                            <th class="px-3 py-2 rounded-l-lg whitespace-nowrap">跌幅</th>
+                            <th class="px-3 py-2 whitespace-nowrap">卖出价格</th>
+                            <th class="px-3 py-2 whitespace-nowrap hidden sm:table-cell">总价值</th>
+                            <th class="px-3 py-2 whitespace-nowrap">亏损</th>
+                            <th class="px-3 py-2 rounded-r-lg whitespace-nowrap">亏损率</th>
+                        </tr>
+                    </thead>
+                    <tbody id="loss-table" class="divide-y divide-gray-200">
+                        <!-- 亏损数据通过JS动态生成 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 自定义目标挂单盈亏测算（填写止盈/止损价则显示） -->
+        <div id="targetDataCard" class="bg-white rounded-lg p-6 sm:p-8 card-shadow mb-8">
+            <h2 class="text-xl font-semibold text-neutral mb-6 pb-2 border-b border-gray-200 flex items-center">
+                <i class="fa fa-crosshairs mr-2"></i> 自定义目标挂单盈亏测算
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 止盈目标 -->
+                <div class="bg-gray-50 rounded-lg p-4 border border-success/20" id="profitTargetCard">
+                    <h4 class="text-sm font-medium text-success mb-3 flex items-center"><i class="fa fa-arrow-up mr-1"></i> 止盈目标测算</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <p class="text-xs text-gray-600">止盈金价</p>
+                            <p id="t-profit-price" class="font-bold">¥ 0.00 /克</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-600">止盈涨幅</p>
+                            <p id="t-profit-rate" class="font-bold text-success">+0.00%</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-600">卖出手续费</p>
+                            <p id="t-profit-sell-fee" class="font-bold">¥ 0.00</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-600">实际盈利</p>
+                            <p id="t-profit-amount" class="font-bold text-success">¥ 0.00</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- 止损目标 -->
+                <div class="bg-gray-50 rounded-lg p-4 border border-danger/20" id="lossTargetCard">
+                    <h4 class="text-sm font-medium text-danger mb-3 flex items-center"><i class="fa fa-arrow-down mr-1"></i> 止损目标测算</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <p class="text-xs text-gray-600">止损金价</p>
+                            <p id="t-loss-price" class="font-bold">¥ 0.00 /克</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-600">止损跌幅</p>
+                            <p id="t-loss-rate" class="font-bold text-danger">-0.00%</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-600">卖出手续费</p>
+                            <p id="t-loss-sell-fee" class="font-bold">¥ 0.00</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-600">实际亏损</p>
+                            <p id="t-loss-amount" class="font-bold text-danger">¥ 0.00</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 交易建议 -->
+        <div class="bg-white rounded-lg p-6 sm:p-8 card-shadow mb-8">
+            <h2 class="text-xl font-semibold text-neutral mb-6 pb-2 border-b border-gray-200">交易建议</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-day/5 rounded-lg p-6 border border-day/30">
+                    <h3 class="text-lg font-semibold text-day mb-4 flex items-center gap-2">
+                        <i class="fa fa-check-circle"></i> 主止盈价格（1%）
+                    </h3>
+                    <p id="best-sell-price" class="text-3xl font-bold text-day mb-4">0.00 元/克</p>
+                    <p class="text-gray-600">日常最易达成，落袋为安的核心目标</p>
+                </div>
+                <div class="bg-day/5 rounded-lg p-6 border border-day/30">
+                    <h3 class="text-lg font-semibold text-day mb-4 flex items-center gap-2">
+                        <i class="fa fa-check-circle"></i> 激进止盈价格（1.5%）
+                    </h3>
+                    <p id="aggressive-sell-price" class="text-3xl font-bold text-day mb-4">0.00 元/克</p>
+                    <p class="text-gray-600">行情偏强时的进阶目标，偶尔可达</p>
+                </div>
+                <div class="bg-danger/5 rounded-lg p-6 border border-danger/30">
+                    <h3 class="text-lg font-semibold text-danger mb-4 flex items-center gap-2">
+                        <i class="fa fa-exclamation-triangle"></i> 止损价格（0.5%）
+                    </h3>
+                    <p id="stop-loss-price" class="text-3xl font-bold text-danger mb-4">0.00 元/克</p>
+                    <p class="text-gray-600">小止损严控风险，符合短线 "小亏大赚" 逻辑</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 权威价格查询 -->
+        <div class="bg-white rounded-lg p-6 sm:p-8 card-shadow mb-8">
+            <h2 class="text-xl font-semibold text-neutral mb-6 pb-2 border-b border-gray-200">权威价格查询</h2>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="https://www.sge.com.cn/" target="_blank" class="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <i class="fa fa-external-link"></i> 上海黄金交易所
+                </a>
+                <a href="https://cn.investing.com/commodities/real-time-futures" target="_blank" class="px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <i class="fa fa-external-link"></i> Investing.com 实时期货
+                </a>
+            </div>
+            <p class="text-center text-sm text-gray-500 mt-4">点击上方链接查看权威的黄金实时价格</p>
+        </div>
+
+        <!-- 风险提醒 -->
+        <div class="bg-white rounded-lg p-6 sm:p-8 card-shadow mb-8">
+            <h2 class="text-xl font-semibold text-neutral mb-6 pb-2 border-b border-gray-200">风险提醒</h2>
+            <div class="bg-danger/5 rounded-lg p-6 border border-danger/30">
+                <h3 class="text-lg font-semibold text-danger mb-4">投资风险提示</h3>
+                <ul class="space-y-2 text-gray-700">
+                    <li class="flex items-start gap-2">
+                        <i class="fa fa-circle text-xs text-danger mt-1"></i>
+                        <span>黄金价格波动较大，短期投资存在较高风险</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <i class="fa fa-circle text-xs text-danger mt-1"></i>
+                        <span>建议设置止损点，避免大幅亏损</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <i class="fa fa-circle text-xs text-danger mt-1"></i>
+                        <span>不要过度杠杆，控制投资金额在可承受范围内</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <i class="fa fa-circle text-xs text-danger mt-1"></i>
+                        <span>关注国际政治经济形势对黄金价格的影响</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <i class="fa fa-circle text-xs text-danger mt-1"></i>
+                        <span>定期关注市场动态，及时调整投资策略</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 底部说明 -->
+        <footer class="mt-10 text-center text-sm text-gray-500">
+            <p>① 手续费规则：主流银行（浙商/工行/建行）黄金日内交易<span class="font-medium">单边0.5%</span>，买卖双向收取，工具已自动计算；</p>
+            <p class="mt-1">② 盈亏平衡点：当日涨到该价格卖出，扣除双向手续费后不赚不亏，是实盘交易的基础参考；</p>
+            <p class="mt-1">③ 实盘极值：当日最高/最低价以上海金交所/银行APP实时行情为准，测算结果为当日理论最大盈亏；</p>
+            <p class="mt-1">④ 日内点位为短线风控核心：<span class="text-day font-medium">主止盈1%</span>（日常最易达成）、<span class="text-day font-medium">激进止盈1.5%</span>（行情偏强时）、<span class="text-day font-medium">止损0.5%</span>（严控风险）；</p>
+            <p class="mt-1">⑤ 长期点位为行业通用参考：<span class="text-success font-medium">止盈8%</span>、<span class="text-danger font-medium">止损5%</span>，适合持有超1天的交易；</p>
+            <p class="mt-1">⑥ 计算精度：克数保留3位小数，金额保留2位小数，与银行实盘交易精度一致。</p>
+            <p class="mt-4">© 2026 黄金日内实盘盈亏计算器 | 仅供参考，不构成投资建议</p>
+        </footer>
+    </div>
+
+    <script>
+        // 手动更新价格
+        function updateManualPrice() {
+            const manualPrice = parseFloat(document.getElementById('manual-price').value);
+            if (!isNaN(manualPrice) && manualPrice > 0) {
+                const now = new Date();
+                const timeString = now.toLocaleString('zh-CN');
+                
+                document.getElementById('current-price').textContent = manualPrice.toFixed(2) + ' 元/克';
+                document.getElementById('update-time').textContent = '更新时间：' + timeString;
+                
+                // 更新计算结果
+                calculateResults();
+                
+                // 保存更新后的价格到本地存储
+                saveInputs();
+                
+                // 清空输入框
+                document.getElementById('manual-price').value = '';
+            } else {
+                alert('请输入有效的黄金价格');
+            }
+        }
+
+        // 计算投资结果
+        function calculateResults() {
+            const buyPrice = parseFloat(document.getElementById('buy-price').value) || 0;
+            const investAmount = parseFloat(document.getElementById('invest-amount').value) || 0;
+            const tradingFeeRate = parseFloat(document.getElementById('trading-fee').value) || 0.5; // 默认0.5%
+            
+            // 获取当前黄金价格
+            const currentPriceText = document.getElementById('current-price').textContent;
+            const currentPrice = parseFloat(currentPriceText.replace(' 元/克', '')) || 0;
+            
+            // 获取实盘极值和自定义目标价格
+            const dayHighPrice = parseFloat(document.getElementById('day-high-price').value) || 0;
+            const dayLowPrice = parseFloat(document.getElementById('day-low-price').value) || 0;
+            const targetProfitPrice = parseFloat(document.getElementById('target-profit-price').value) || 0;
+            const targetLossPrice = parseFloat(document.getElementById('target-loss-price').value) || 0;
+            
+            // 基础建仓计算
+            if (buyPrice > 0 && investAmount > 0) {
+                // 计算建仓手续费
+                const buyFee = (investAmount * tradingFeeRate / 100).toFixed(2);
+                // 扣建仓费后实际可用资金
+                const actualFund = investAmount - Number(buyFee);
+                // 实际可购克数（3位小数）
+                const goldWeight = (actualFund / buyPrice).toFixed(3);
+                // 持仓成本价（含建仓费）
+                const costPrice = (investAmount / Number(goldWeight)).toFixed(2);
+                // 盈亏平衡点金价：扣除双向手续费后不赚不亏的卖出价
+                const breakEvenPrice = (Number(costPrice) / (1 - tradingFeeRate / 100)).toFixed(2);
+                
+                // 更新基础建仓结果
+                document.getElementById('gold-weight').textContent = goldWeight + ' 克';
+                document.getElementById('trading-fee-amount').textContent = '¥ ' + buyFee;
+                document.getElementById('cost-price').textContent = '¥ ' + costPrice + ' /克';
+                document.getElementById('break-even-price').textContent = '¥ ' + breakEvenPrice + ' /克';
+                
+                // 计算当前市场价值
+                const currentValue = (parseFloat(goldWeight) * currentPrice).toFixed(2);
+                const sellFee = (parseFloat(currentValue) * tradingFeeRate / 100).toFixed(2);
+                const totalFee = (Number(buyFee) + Number(sellFee)).toFixed(2);
+                const profit = (parseFloat(currentValue) - investAmount - Number(totalFee)).toFixed(2);
+                const profitRate = ((parseFloat(profit) / investAmount) * 100).toFixed(2);
+                
+                // 更新当前市场价值
+                document.getElementById('current-value').textContent = '¥ ' + currentValue;
+                
+                const profitElement = document.getElementById('profit');
+                profitElement.textContent = '¥ ' + profit;
+                profitElement.className = 'text-2xl font-bold ' + (parseFloat(profit) > 0 ? 'text-success' : (parseFloat(profit) < 0 ? 'text-danger' : ''));
+                
+                const profitRateElement = document.getElementById('profit-rate');
+                profitRateElement.textContent = profitRate + '%';
+                profitRateElement.className = 'text-xl font-bold ' + (parseFloat(profitRate) > 0 ? 'text-success' : (parseFloat(profitRate) < 0 ? 'text-danger' : ''));
+                
+                // 当日实盘极值计算
+                if (dayHighPrice > 0 || dayLowPrice > 0) {
+                    // 计算日内实际波动幅度
+                    let dayVolatility = 0;
+                    if (dayHighPrice > 0 && dayLowPrice > 0 && dayHighPrice >= dayLowPrice) {
+                        dayVolatility = ((dayHighPrice - dayLowPrice) / buyPrice * 100).toFixed(2);
+                    }
+                    document.getElementById('day-volatility').textContent = dayVolatility + '%';
+                    
+                    // 当日最大可盈利
+                    let maxProfit = 0, maxProfitRate = 0;
+                    if (dayHighPrice > 0) {
+                        const sellTotal = (dayHighPrice * Number(goldWeight)).toFixed(2);
+                        const sellFee = (parseFloat(sellTotal) * tradingFeeRate / 100).toFixed(2);
+                        maxProfit = (parseFloat(sellTotal) - Number(sellFee) - investAmount).toFixed(2);
+                        maxProfitRate = ((parseFloat(maxProfit) / investAmount) * 100).toFixed(2);
+                    }
+                    document.getElementById('max-profit').textContent = `¥ ${maxProfit} (${maxProfitRate > 0 ? '+' : ''}${maxProfitRate}%)`;
+                    
+                    // 当日最大可亏损
+                    let maxLoss = 0, maxLossRate = 0;
+                    if (dayLowPrice > 0) {
+                        const sellTotal = (dayLowPrice * Number(goldWeight)).toFixed(2);
+                        const sellFee = (parseFloat(sellTotal) * tradingFeeRate / 100).toFixed(2);
+                        maxLoss = (parseFloat(sellTotal) - Number(sellFee) - investAmount).toFixed(2);
+                        maxLossRate = ((parseFloat(maxLoss) / investAmount) * 100).toFixed(2);
+                    }
+                    document.getElementById('max-loss').textContent = `¥ ${maxLoss} (${maxLossRate}%)`;
+                } else {
+                    // 重置实盘极值结果
+                    document.getElementById('day-volatility').textContent = '0.00%';
+                    document.getElementById('max-profit').textContent = '¥ 0.00 (+0.00%)';
+                    document.getElementById('max-loss').textContent = '¥ 0.00 (-0.00%)';
+                }
+                
+                // 自定义目标挂单计算
+                // 止盈目标
+                if (targetProfitPrice > 0) {
+                    const profitRate = (((targetProfitPrice - buyPrice) / buyPrice) * 100).toFixed(2);
+                    const sellTotal = (targetProfitPrice * Number(goldWeight)).toFixed(2);
+                    const sellFee = (parseFloat(sellTotal) * tradingFeeRate / 100).toFixed(2);
+                    const profitAmount = (parseFloat(sellTotal) - Number(sellFee) - investAmount).toFixed(2);
+                    
+                    document.getElementById('t-profit-price').textContent = '¥ ' + targetProfitPrice + ' /克';
+                    document.getElementById('t-profit-rate').textContent = (parseFloat(profitRate) >= 0 ? '+' : '') + profitRate + '%';
+                    document.getElementById('t-profit-sell-fee').textContent = '¥ ' + sellFee;
+                    document.getElementById('t-profit-amount').textContent = '¥ ' + profitAmount;
+                } else {
+                    // 重置止盈目标结果
+                    document.getElementById('t-profit-price').textContent = '¥ 0.00 /克';
+                    document.getElementById('t-profit-rate').textContent = '+0.00%';
+                    document.getElementById('t-profit-sell-fee').textContent = '¥ 0.00';
+                    document.getElementById('t-profit-amount').textContent = '¥ 0.00';
+                }
+                
+                // 止损目标
+                if (targetLossPrice > 0) {
+                    const lossRate = (((targetLossPrice - buyPrice) / buyPrice) * 100).toFixed(2);
+                    const sellTotal = (targetLossPrice * Number(goldWeight)).toFixed(2);
+                    const sellFee = (parseFloat(sellTotal) * tradingFeeRate / 100).toFixed(2);
+                    const lossAmount = (parseFloat(sellTotal) - Number(sellFee) - investAmount).toFixed(2);
+                    
+                    document.getElementById('t-loss-price').textContent = '¥ ' + targetLossPrice + ' /克';
+                    document.getElementById('t-loss-rate').textContent = lossRate + '%';
+                    document.getElementById('t-loss-sell-fee').textContent = '¥ ' + sellFee;
+                    document.getElementById('t-loss-amount').textContent = '¥ ' + lossAmount;
+                } else {
+                    // 重置止损目标结果
+                    document.getElementById('t-loss-price').textContent = '¥ 0.00 /克';
+                    document.getElementById('t-loss-rate').textContent = '-0.00%';
+                    document.getElementById('t-loss-sell-fee').textContent = '¥ 0.00';
+                    document.getElementById('t-loss-amount').textContent = '¥ 0.00';
+                }
+                
+                // 生成盈利清单
+                generateProfitList(buyPrice, investAmount, tradingFeeRate, parseFloat(goldWeight), currentPrice);
+                
+                // 生成亏损清单
+                generateLossList(buyPrice, investAmount, tradingFeeRate, parseFloat(goldWeight), currentPrice);
+                
+                // 计算最佳卖出和止损价格
+                calculateBestPrices(buyPrice, investAmount, tradingFeeRate, parseFloat(goldWeight));
+            } else {
+                // 重置所有结果
+                document.getElementById('gold-weight').textContent = '0.000 克';
+                document.getElementById('trading-fee-amount').textContent = '¥ 0.00';
+                document.getElementById('cost-price').textContent = '¥ 0.00 /克';
+                document.getElementById('break-even-price').textContent = '¥ 0.00 /克';
+                document.getElementById('current-value').textContent = '¥ 0.00';
+                document.getElementById('profit').textContent = '¥ 0.00';
+                document.getElementById('profit').className = 'text-2xl font-bold';
+                document.getElementById('profit-rate').textContent = '0.00%';
+                document.getElementById('profit-rate').className = 'text-xl font-bold';
+                document.getElementById('day-volatility').textContent = '0.00%';
+                document.getElementById('max-profit').textContent = '¥ 0.00 (+0.00%)';
+                document.getElementById('max-loss').textContent = '¥ 0.00 (-0.00%)';
+                document.getElementById('t-profit-price').textContent = '¥ 0.00 /克';
+                document.getElementById('t-profit-rate').textContent = '+0.00%';
+                document.getElementById('t-profit-sell-fee').textContent = '¥ 0.00';
+                document.getElementById('t-profit-amount').textContent = '¥ 0.00';
+                document.getElementById('t-loss-price').textContent = '¥ 0.00 /克';
+                document.getElementById('t-loss-rate').textContent = '-0.00%';
+                document.getElementById('t-loss-sell-fee').textContent = '¥ 0.00';
+                document.getElementById('t-loss-amount').textContent = '¥ 0.00';
+                
+                // 清空盈利和亏损清单
+                document.getElementById('profit-table').innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #999;">请输入有效的投资信息</td></tr>';
+                document.getElementById('loss-table').innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #999;">请输入有效的投资信息</td></tr>';
+                
+                // 重置最佳卖出和止损价格
+                document.getElementById('best-sell-price').textContent = '0.00 元/克';
+                document.getElementById('aggressive-sell-price').textContent = '0.00 元/克';
+                document.getElementById('stop-loss-price').textContent = '0.00 元/克';
+            }
+        }
+
+        // 生成盈利清单
+        function generateProfitList(buyPrice, investAmount, tradingFeeRate, goldWeight, currentPrice) {
+            if (buyPrice <= 0 || investAmount <= 0 || goldWeight <= 0) {
+                document.getElementById('profit-table').innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #999;">请输入有效的投资信息</td></tr>';
+                return;
+            }
+            
+            // 计算建仓手续费
+            const buyFee = investAmount * tradingFeeRate / 100;
+            
+            // 定义不同的价格涨幅
+            const priceChanges = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            let tableHTML = '';
+            
+            priceChanges.forEach(change => {
+                const priceChangePercent = change;
+                const sellPrice = buyPrice * (1 + priceChangePercent / 100);
+                const sellValue = sellPrice * goldWeight;
+                const sellFee = sellValue * tradingFeeRate / 100;
+                const totalFee = buyFee + sellFee;
+                const profit = sellValue - investAmount - totalFee;
+                const profitRate = (profit / investAmount) * 100;
+                
+                // 创建行
+                const tr = document.createElement('tr');
+                tr.className = 'table-hover';
+                
+                // 标记点位：日内+1%（黄色）、日内+1.5%（黄色）、长期+5%（绿色）、长期+8%（绿色）
+                if (change === 1 || change === 1.5) tr.className += ' day-point';
+                if (change === 5 || change === 8) tr.className += ' long-point';
+                
+                // 行内容
+                let icon = '';
+                if (change === 1 || change === 1.5) icon = '☀️ '; // 日内指标图标
+                if (change === 5 || change === 8) icon = '⭐ '; // 长期指标图标
+                tr.innerHTML = `
+                    <td class="px-3 py-2 font-medium whitespace-nowrap">${icon}+${priceChangePercent}%</td>
+                    <td class="px-3 py-2 whitespace-nowrap">¥ ${sellPrice.toFixed(2)}</td>
+                    <td class="px-3 py-2 whitespace-nowrap hidden sm:table-cell">¥ ${sellValue.toFixed(2)}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-success">¥ ${profit.toFixed(2)}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-success">+${profitRate.toFixed(2)}%</td>
+                `;
+                
+                tableHTML += tr.outerHTML;
+            });
+            
+            document.getElementById('profit-table').innerHTML = tableHTML;
+        }
+
+        // 生成亏损清单
+        function generateLossList(buyPrice, investAmount, tradingFeeRate, goldWeight, currentPrice) {
+            if (buyPrice <= 0 || investAmount <= 0 || goldWeight <= 0) {
+                document.getElementById('loss-table').innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #999;">请输入有效的投资信息</td></tr>';
+                return;
+            }
+            
+            // 计算建仓手续费
+            const buyFee = investAmount * tradingFeeRate / 100;
+            
+            // 定义不同的价格跌幅
+            const priceChanges = [0.5, 1, 1.5, 2, 3, 4, 5, 6, 7, 8];
+            let tableHTML = '';
+            
+            priceChanges.forEach(change => {
+                const priceChangePercent = change;
+                const sellPrice = buyPrice * (1 - priceChangePercent / 100);
+                const sellValue = sellPrice * goldWeight;
+                const sellFee = sellValue * tradingFeeRate / 100;
+                const totalFee = buyFee + sellFee;
+                const loss = sellValue - investAmount - totalFee;
+                const lossRate = (loss / investAmount) * 100;
+                
+                // 创建行
+                const tr = document.createElement('tr');
+                tr.className = 'table-hover';
+                
+                // 标记点位：日内-0.5%（黄色）、长期-5%（红色）
+                if (change === 0.5) tr.className += ' day-point';
+                if (change === 5) tr.className += ' long-point';
+                
+                // 行内容
+                let icon = '';
+                if (change === 0.5) icon = '☀️ '; // 日内指标图标
+                if (change === 5) icon = '⭐ '; // 长期指标图标
+                tr.innerHTML = `
+                    <td class="px-3 py-2 font-medium whitespace-nowrap">${icon}-${priceChangePercent}%</td>
+                    <td class="px-3 py-2 whitespace-nowrap">¥ ${sellPrice.toFixed(2)}</td>
+                    <td class="px-3 py-2 whitespace-nowrap hidden sm:table-cell">¥ ${sellValue.toFixed(2)}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-danger">¥ ${loss.toFixed(2)}</td>
+                    <td class="px-3 py-2 whitespace-nowrap text-danger">${lossRate.toFixed(2)}%</td>
+                `;
+                
+                tableHTML += tr.outerHTML;
+            });
+            
+            document.getElementById('loss-table').innerHTML = tableHTML;
+        }
+
+        // 计算最佳卖出和止损价格
+        function calculateBestPrices(buyPrice, investAmount, tradingFeeRate, goldWeight) {
+            if (buyPrice <= 0 || investAmount <= 0 || goldWeight <= 0) {
+                document.getElementById('best-sell-price').textContent = '0.00 元/克';
+                document.getElementById('aggressive-sell-price').textContent = '0.00 元/克';
+                document.getElementById('stop-loss-price').textContent = '0.00 元/克';
+                return;
+            }
+            
+            // 计算建仓手续费
+            const buyFee = investAmount * tradingFeeRate / 100;
+            const actualCost = investAmount + buyFee;
+            
+            // 主止盈价格（目标收益率1%）
+            const mainProfitRate = 1; // 1%
+            const mainProfit = investAmount * mainProfitRate / 100;
+            // 考虑卖出手续费的主止盈价格
+            const mainSellPrice = (actualCost + mainProfit) / (1 - tradingFeeRate / 100) / goldWeight;
+            
+            // 激进止盈价格（目标收益率1.5%）
+            const aggressiveProfitRate = 1.5; // 1.5%
+            const aggressiveProfit = investAmount * aggressiveProfitRate / 100;
+            // 考虑卖出手续费的激进止盈价格
+            const aggressiveSellPrice = (actualCost + aggressiveProfit) / (1 - tradingFeeRate / 100) / goldWeight;
+            
+            // 止损价格（最大亏损0.5%）
+            const maxLossRate = 0.5; // 0.5%
+            const maxLoss = investAmount * maxLossRate / 100;
+            // 考虑卖出手续费的止损价格
+            const stopLossPrice = (actualCost - maxLoss) / (1 - tradingFeeRate / 100) / goldWeight;
+            
+            // 更新显示
+            document.getElementById('best-sell-price').textContent = mainSellPrice.toFixed(2) + ' 元/克';
+            document.getElementById('aggressive-sell-price').textContent = aggressiveSellPrice.toFixed(2) + ' 元/克';
+            document.getElementById('stop-loss-price').textContent = stopLossPrice.toFixed(2) + ' 元/克';
+        }
+
+        // 保存输入到本地存储
+        function saveInputs() {
+            // 从current-price显示中获取当前价格，而不是从输入框获取
+            const currentPriceText = document.getElementById('current-price').textContent;
+            const currentPrice = parseFloat(currentPriceText.replace(' 元/克', '')) || 0;
+            
+            const inputs = {
+                buyPrice: document.getElementById('buy-price').value,
+                investAmount: document.getElementById('invest-amount').value,
+                tradingFee: document.getElementById('trading-fee').value,
+                dayHighPrice: document.getElementById('day-high-price').value,
+                dayLowPrice: document.getElementById('day-low-price').value,
+                targetProfitPrice: document.getElementById('target-profit-price').value,
+                targetLossPrice: document.getElementById('target-loss-price').value,
+                manualPrice: currentPrice > 0 ? currentPrice.toString() : ''
+            };
+            localStorage.setItem('goldCalculatorInputs', JSON.stringify(inputs));
+        }
+
+        // 从本地存储加载输入
+        function loadInputs() {
+            const savedInputs = localStorage.getItem('goldCalculatorInputs');
+            if (savedInputs) {
+                const inputs = JSON.parse(savedInputs);
+                document.getElementById('buy-price').value = inputs.buyPrice || '';
+                document.getElementById('invest-amount').value = inputs.investAmount || '';
+                document.getElementById('trading-fee').value = inputs.tradingFee || '0.5';
+                document.getElementById('day-high-price').value = inputs.dayHighPrice || '';
+                document.getElementById('day-low-price').value = inputs.dayLowPrice || '';
+                document.getElementById('target-profit-price').value = inputs.targetProfitPrice || '';
+                document.getElementById('target-loss-price').value = inputs.targetLossPrice || '';
+                document.getElementById('manual-price').value = inputs.manualPrice || '';
+                
+                // 如果有保存的手动价格，更新当前价格显示
+                if (inputs.manualPrice && !isNaN(parseFloat(inputs.manualPrice))) {
+                    document.getElementById('current-price').textContent = parseFloat(inputs.manualPrice).toFixed(2) + ' 元/克';
+                    document.getElementById('update-time').textContent = '更新时间：' + new Date().toLocaleString('zh-CN');
+                }
+            }
+        }
+
+        // 监听输入变化
+        document.getElementById('buy-price').addEventListener('input', function() {
+            calculateResults();
+            saveInputs();
+        });
+        document.getElementById('invest-amount').addEventListener('input', function() {
+            calculateResults();
+            saveInputs();
+        });
+        document.getElementById('trading-fee').addEventListener('input', function() {
+            calculateResults();
+            saveInputs();
+        });
+        document.getElementById('day-high-price').addEventListener('input', function() {
+            calculateResults();
+            saveInputs();
+        });
+        document.getElementById('day-low-price').addEventListener('input', function() {
+            calculateResults();
+            saveInputs();
+        });
+        document.getElementById('target-profit-price').addEventListener('input', function() {
+            calculateResults();
+            saveInputs();
+        });
+        document.getElementById('target-loss-price').addEventListener('input', function() {
+            calculateResults();
+            saveInputs();
+        });
+        document.getElementById('manual-price').addEventListener('input', function() {
+            saveInputs();
+        });
+
+        // 初始化
+        window.onload = function() {
+            // 加载保存的输入
+            loadInputs();
+            // 初始化计算
+            calculateResults();
+        };
+    </script>
+</body>
 </html>
